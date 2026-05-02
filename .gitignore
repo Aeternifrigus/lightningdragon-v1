@@ -1,0 +1,5 @@
+build*/
+velocitydb_data/
+velocitydb_demo_data/
+.vscode/
+.idea/
