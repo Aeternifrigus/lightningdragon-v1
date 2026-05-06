@@ -16,6 +16,7 @@ add_compile_options(-Wall -Wextra -Wpedantic)
 find_package(Threads REQUIRED)
 
 add_library(velocitydb STATIC
+    src/bloom.cpp
     src/compressor.cpp
     src/skiplist.cpp
 )
@@ -29,6 +30,7 @@ if(VELOCITYDB_BUILD_TESTS)
     enable_testing()
     add_executable(velocitydb_tests
         tests/main.cpp
+        tests/test_bloom.cpp
         tests/test_compressor.cpp
         tests/test_skiplist.cpp
     )
