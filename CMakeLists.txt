@@ -19,6 +19,7 @@ add_library(velocitydb STATIC
     src/bloom.cpp
     src/compressor.cpp
     src/skiplist.cpp
+    src/wal.cpp
 )
 target_include_directories(velocitydb
     PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -33,6 +34,7 @@ if(VELOCITYDB_BUILD_TESTS)
         tests/test_bloom.cpp
         tests/test_compressor.cpp
         tests/test_skiplist.cpp
+        tests/test_wal.cpp
     )
     target_include_directories(velocitydb_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(velocitydb_tests PRIVATE velocitydb)
