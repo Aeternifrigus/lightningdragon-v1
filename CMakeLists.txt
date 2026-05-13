@@ -18,8 +18,10 @@ find_package(Threads REQUIRED)
 add_library(velocitydb STATIC
     src/bloom.cpp
     src/compressor.cpp
+    src/db.cpp
     src/skiplist.cpp
     src/sstable.cpp
+    src/transaction.cpp
     src/wal.cpp
 )
 target_include_directories(velocitydb
@@ -34,6 +36,7 @@ if(VELOCITYDB_BUILD_TESTS)
         tests/main.cpp
         tests/test_bloom.cpp
         tests/test_compressor.cpp
+        tests/test_db.cpp
         tests/test_skiplist.cpp
         tests/test_sstable.cpp
         tests/test_wal.cpp
@@ -44,3 +47,4 @@ if(VELOCITYDB_BUILD_TESTS)
 endif()
 
 install(TARGETS velocitydb ARCHIVE DESTINATION lib)
+install(FILES include/velocitydb.hpp DESTINATION include)
