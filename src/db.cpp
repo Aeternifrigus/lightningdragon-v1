@@ -152,7 +152,7 @@ LookupResult VelocityDB::lookup(std::string_view key, uint64_t snapshot) const {
     // A flush adds its table before dropping the immutable memtable, so a key
     // is always in one place or the other.
     std::shared_lock<std::shared_mutex> lock(tables_mutex_);
-    for (auto it = tables_.begin(); it != tables_.end(); ++it) {
+    for (auto it = tables_.rbegin(); it != tables_.rend(); ++it) {
         if (!(*it)->may_contain(key)) {
             stats_.bloom_skips.fetch_add(1, std::memory_order_relaxed);
             continue;

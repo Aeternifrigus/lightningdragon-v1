@@ -48,6 +48,28 @@ TEST(db_reads_after_flush) {
     CHECK(!db.get("key1000"));
 }
 
+TEST(db_newest_table_wins) {
+    check::TempDir dir;
+    VelocityDB db(test_config(dir));
+    db.put("k", "old");
+    db.flush();
+    db.put("k", "new");
+    db.flush();
+    CHECK_EQ(db.table_count(), 2u);
+    CHECK_EQ(value_of(db.get("k")), std::string("new"));
+}
+
+TEST(db_delete_hides_value_in_older_table) {
+    check::TempDir dir;
+    VelocityDB db(test_config(dir));
+    db.put("k", "v");
+    db.flush();
+    db.remove("k");
+    CHECK(!db.get("k"));  // tombstone in the memtable
+    db.flush();
+    CHECK(!db.get("k"));  // tombstone in the newer table
+}
+
 TEST(db_write_batch) {
     check::TempDir dir;
     VelocityDB db(test_config(dir));
