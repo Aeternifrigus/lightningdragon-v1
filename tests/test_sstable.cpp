@@ -46,6 +46,7 @@ TEST(sstable_reopen_reads_same_data) {
     CHECK_EQ(table->size(), entries.size());
     CHECK_EQ(table->max_sequence(), 1000u);
     for (const auto& e : entries) {
+        CHECK(table->may_contain(e.key));
         const auto r = table->get(e.key);
         if (e.deleted) {
             CHECK(r.state == LookupResult::State::Deleted);

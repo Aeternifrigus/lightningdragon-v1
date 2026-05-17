@@ -70,6 +70,23 @@ TEST(db_delete_hides_value_in_older_table) {
     CHECK(!db.get("k"));  // tombstone in the newer table
 }
 
+TEST(db_data_survives_reopen) {
+    check::TempDir dir;
+    {
+        VelocityDB db(test_config(dir));
+        db.put("a", "1");
+        db.put("b", "2");
+        db.flush();
+        db.put("b", "3");
+        db.remove("a");
+    }  // closing flushes the memtable
+    VelocityDB db(test_config(dir));
+    CHECK(!db.get("a"));
+    CHECK_EQ(value_of(db.get("b")), std::string("3"));
+    db.put("c", "4");  // sequence numbers carry on from the stored ones
+    CHECK_EQ(value_of(db.get("c")), std::string("4"));
+}
+
 TEST(db_write_batch) {
     check::TempDir dir;
     VelocityDB db(test_config(dir));

@@ -146,8 +146,10 @@ std::shared_ptr<SSTable> SSTable::open(const std::string& path) {
         corrupt(path, "section sizes don't add up");
     }
 
-    std::shared_ptr<SSTable> table(
-        new SSTable(path, BloomFilter(footer[kFieldEntries], footer[kFieldBloomHashes])));
+    const uint8_t* bloom_start = bytes + data_size + index_size;
+    BloomFilter bloom(std::vector<uint8_t>(bloom_start, bloom_start + bloom_size),
+                      static_cast<uint32_t>(footer[kFieldBloomHashes]));
+    std::shared_ptr<SSTable> table(new SSTable(path, std::move(bloom)));
 
     if (footer[kFieldFlags] & kFlagCompressed) {
         auto raw = Compressor::decompress(bytes, data_size);
