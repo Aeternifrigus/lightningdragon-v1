@@ -16,6 +16,14 @@ uint64_t fnv1a(std::string_view key) {
     return h;
 }
 
+// splitmix64 finalizer, used to derive a second hash from the first
+uint64_t mix(uint64_t x) {
+    x += 0x9e3779b97f4a7c15ULL;
+    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+    return x ^ (x >> 31);
+}
+
 }  // namespace
 
 BloomFilter::BloomFilter(size_t expected_keys, size_t bits_per_key) {
@@ -30,7 +38,7 @@ BloomFilter::BloomFilter(std::vector<uint8_t> bits, uint32_t num_hashes)
 
 void BloomFilter::add(std::string_view key) {
     const uint64_t h1 = fnv1a(key);
-    const uint64_t h2 = fnv1a(key) | 1;
+    const uint64_t h2 = mix(h1) | 1;
     const uint64_t num_bits = bits_.size() * 8;
     for (uint32_t i = 0; i < num_hashes_; i++) {
         const uint64_t bit = (h1 + i * h2) % num_bits;
@@ -41,7 +49,7 @@ void BloomFilter::add(std::string_view key) {
 bool BloomFilter::may_contain(std::string_view key) const {
     if (bits_.empty()) return true;
     const uint64_t h1 = fnv1a(key);
-    const uint64_t h2 = fnv1a(key) | 1;
+    const uint64_t h2 = mix(h1) | 1;
     const uint64_t num_bits = bits_.size() * 8;
     for (uint32_t i = 0; i < num_hashes_; i++) {
         const uint64_t bit = (h1 + i * h2) % num_bits;
