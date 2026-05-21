@@ -1,12 +1,3 @@
-/**
- * VelocityDB - High-Performance Database Engine
- * 
- * Demonstrates: Algorithms, concurrency, persistence, memory management
- * - 1M writes/sec on NVMe SSD
- * - < 10μs point query latency
- * - ACID compliance with snapshot isolation
- * - Compression achieving 10:1 ratio
- */
 
 #pragma once
 
