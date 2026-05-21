@@ -1,12 +1,4 @@
-/**
- * VelocityDB Demo & Benchmark
- * 
- * Demonstrates the high-performance capabilities:
- * - 1M writes/sec on NVMe SSD
- * - < 10μs point query latency
- * - ACID compliance with snapshot isolation
- * - Compression achieving 10:1 ratio
- */
+
 
 #include "velocitydb.hpp"
 #include <iostream>
