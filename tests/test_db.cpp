@@ -87,6 +87,26 @@ TEST(db_data_survives_reopen) {
     CHECK_EQ(value_of(db.get("c")), std::string("4"));
 }
 
+TEST(db_recovers_from_wal_after_crash) {
+    check::TempDir dir;
+    check::TempDir copy;
+    {
+        VelocityDB db(test_config(dir));
+        db.put("flushed", "1");
+        db.flush();
+        db.put("only_in_wal", "2");
+        db.remove("flushed");
+        // copy the files while the database is still open, which is what the
+        // disk looks like if the process dies here
+        std::filesystem::copy(dir.path(), copy.path(), std::filesystem::copy_options::recursive |
+                                                           std::filesystem::copy_options::overwrite_existing);
+    }
+    VelocityDB db(test_config(copy));
+    CHECK_EQ(value_of(db.get("only_in_wal")), std::string("2"));
+    CHECK(!db.get("flushed"));
+    CHECK(!std::filesystem::exists(copy.path() / "wal.log.old"));
+}
+
 TEST(db_write_batch) {
     check::TempDir dir;
     VelocityDB db(test_config(dir));

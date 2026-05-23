@@ -23,6 +23,7 @@ VelocityDB::VelocityDB(Config config) : config_(std::move(config)) {
     next_sequence_ = max_seq + 1;
 
     if (config_.enable_wal) {
+        recover_wal();
         wal_ = std::make_unique<WAL>(wal_path());
     }
     visible_sequence_.store(next_sequence_ - 1, std::memory_order_release);
@@ -71,6 +72,39 @@ void VelocityDB::open_tables() {
         tables_.push_back(SSTable::open(path));
         next_table_number_ = number + 1;
     }
+}
+
+// Replays wal.log.old (left behind if we crashed during a flush) and wal.log,
+// then writes everything recovered to a table so both logs can be deleted.
+void VelocityDB::recover_wal() {
+    const std::string current = wal_path();
+    const std::string old = current + ".old";
+
+    uint64_t max_seq = next_sequence_ - 1;
+    for (const auto& path : {old, current}) {
+        WAL::replay(path, [&](uint64_t seq, const WriteOp& op) {
+            if (op.deleted) {
+                memtable_->remove(op.key, seq);
+            } else {
+                memtable_->put(op.key, op.value, seq);
+            }
+            max_seq = std::max(max_seq, seq);
+        });
+    }
+    next_sequence_ = max_seq + 1;
+
+    if (memtable_->key_count() > 0) {
+        std::vector<SSTable::Entry> entries;
+        for (auto it = memtable_->begin(); it.valid(); it.next()) {
+            const auto& v = it.newest();
+            entries.push_back({it.key(), v.value, v.sequence, v.deleted});
+        }
+        tables_.push_back(SSTable::write(table_path(next_table_number_++), entries,
+                                         {config_.enable_compression, config_.bloom_bits_per_key}));
+        memtable_ = std::make_unique<SkipList>();
+    }
+    fs::remove(old);
+    fs::remove(current);
 }
 
 // ---------------------------------------------------------------------------

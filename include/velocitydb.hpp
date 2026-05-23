@@ -96,6 +96,7 @@ private:
     LookupResult lookup(std::string_view key, uint64_t snapshot) const;
 
     void open_tables();
+    void recover_wal();
     void flush_memtable();
     void maybe_schedule_maintenance();
     void maintenance_loop();
