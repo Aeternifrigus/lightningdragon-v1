@@ -113,21 +113,31 @@ void VelocityDB::recover_wal() {
 void VelocityDB::put(std::string_view key, std::string_view value) {
     WriteBatch batch;
     batch.put(key, value);
-    write_internal(batch);
+    write_internal(batch, nullptr);
 }
 
 void VelocityDB::remove(std::string_view key) {
     WriteBatch batch;
     batch.remove(key);
-    write_internal(batch);
+    write_internal(batch, nullptr);
 }
 
-void VelocityDB::write(const WriteBatch& batch) { write_internal(batch); }
+void VelocityDB::write(const WriteBatch& batch) { write_internal(batch, nullptr); }
 
-void VelocityDB::write_internal(const WriteBatch& batch) {
-    if (batch.empty()) return;
+uint64_t VelocityDB::latest_sequence(const std::string& key) const {
+    return lookup(key, UINT64_MAX).sequence;
+}
+
+bool VelocityDB::write_internal(const WriteBatch& batch, const Snapshot* conflict_since) {
+    if (batch.empty()) return true;
     {
         std::lock_guard<std::mutex> writer(write_mutex_);
+
+        if (conflict_since) {
+            for (const auto& op : batch.ops()) {
+                if (latest_sequence(op.key) > conflict_since->sequence) return false;
+            }
+        }
 
         const uint64_t first = next_sequence_;
         next_sequence_ += batch.size();
@@ -150,6 +160,7 @@ void VelocityDB::write_internal(const WriteBatch& batch) {
         (op.deleted ? stats_.deletes : stats_.writes).fetch_add(1, std::memory_order_relaxed);
     }
     maybe_schedule_maintenance();
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -198,6 +209,10 @@ LookupResult VelocityDB::lookup(std::string_view key, uint64_t snapshot) const {
         }
     }
     return {};
+}
+
+std::unique_ptr<Transaction> VelocityDB::begin_transaction() {
+    return std::unique_ptr<Transaction>(new Transaction(this, create_snapshot()));
 }
 
 size_t VelocityDB::table_count() const {

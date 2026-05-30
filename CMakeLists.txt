@@ -39,6 +39,7 @@ if(VELOCITYDB_BUILD_TESTS)
         tests/test_db.cpp
         tests/test_skiplist.cpp
         tests/test_sstable.cpp
+        tests/test_transaction.cpp
         tests/test_wal.cpp
     )
     target_include_directories(velocitydb_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)

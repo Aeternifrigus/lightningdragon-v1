@@ -66,6 +66,32 @@ private:
     std::vector<WriteOp> ops_;
 };
 
+// Optimistic transaction with snapshot isolation. Reads see the database as it
+// was at begin_transaction(), plus this transaction's own writes. commit()
+// returns false if another write touched one of this transaction's keys after
+// it began (first committer wins).
+class Transaction {
+public:
+    Transaction(const Transaction&) = delete;
+    Transaction& operator=(const Transaction&) = delete;
+
+    void put(std::string_view key, std::string_view value);
+    void remove(std::string_view key);
+    std::optional<std::string> get(std::string_view key) const;
+
+    bool commit();
+    void rollback();
+
+private:
+    friend class VelocityDB;
+    Transaction(VelocityDB* db, Snapshot snapshot);
+
+    VelocityDB* db_;
+    Snapshot snapshot_;
+    WriteBatch batch_;
+    bool done_ = false;
+};
+
 class VelocityDB {
 public:
     explicit VelocityDB(Config config = Config{});
@@ -85,6 +111,8 @@ public:
     // see the README: versions overwritten before a flush are not kept on disk.
     Snapshot create_snapshot() const;
 
+    std::unique_ptr<Transaction> begin_transaction();
+
     // Write the memtable to a table file and sync the WAL.
     void flush();
 
@@ -92,8 +120,11 @@ public:
     size_t table_count() const;
 
 private:
-    void write_internal(const WriteBatch& batch);
+    friend class Transaction;
+
+    bool write_internal(const WriteBatch& batch, const Snapshot* conflict_since);
     LookupResult lookup(std::string_view key, uint64_t snapshot) const;
+    uint64_t latest_sequence(const std::string& key) const;
 
     void open_tables();
     void recover_wal();
