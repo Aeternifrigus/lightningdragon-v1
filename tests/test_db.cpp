@@ -132,3 +132,42 @@ TEST(db_snapshot_reads) {
     CHECK(!db.get("new_key", snap));
     CHECK(!db.get("counter"));
 }
+
+TEST(db_compaction_keeps_newest_and_drops_deletes) {
+    check::TempDir dir;
+    VelocityDB db(test_config(dir));
+    for (int round = 0; round < 4; round++) {
+        for (int i = 0; i < 100; i++) db.put("key" + std::to_string(i), "r" + std::to_string(round));
+        db.remove("key" + std::to_string(round));
+        db.flush();
+    }
+    CHECK_EQ(db.table_count(), 4u);
+    db.compact();
+    CHECK_EQ(db.table_count(), 1u);
+    CHECK_EQ(db.stats().compactions.load(), 1u);
+    CHECK(!db.get("key3"));
+    CHECK_EQ(value_of(db.get("key0")), std::string("r3"));  // deleted in round 0, rewritten after
+    CHECK_EQ(value_of(db.get("key50")), std::string("r3"));
+
+    size_t sst_files = 0;
+    for (const auto& e : std::filesystem::directory_iterator(dir.path())) {
+        if (e.path().extension() == ".sst") sst_files++;
+    }
+    CHECK_EQ(sst_files, 1u);
+}
+
+TEST(db_compaction_survives_reopen) {
+    check::TempDir dir;
+    {
+        VelocityDB db(test_config(dir));
+        for (int t = 0; t < 3; t++) {
+            db.put("k", std::to_string(t));
+            db.flush();
+        }
+        db.compact();
+        db.put("k", "latest");
+        db.flush();
+    }
+    VelocityDB db(test_config(dir));
+    CHECK_EQ(value_of(db.get("k")), std::string("latest"));
+}

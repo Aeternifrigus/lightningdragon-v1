@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <iostream>
+#include <map>
 
 #include "skiplist.hpp"
 #include "sstable.hpp"
@@ -221,12 +222,14 @@ size_t VelocityDB::table_count() const {
 }
 
 // ---------------------------------------------------------------------------
-// flush
+// flush and compaction
 
 void VelocityDB::flush() {
     flush_memtable();
     if (wal_) wal_->sync();
 }
+
+void VelocityDB::compact() { compact_tables(); }
 
 void VelocityDB::flush_memtable() {
     std::lock_guard<std::mutex> maintenance(maintenance_mutex_);
@@ -267,11 +270,54 @@ void VelocityDB::flush_memtable() {
     stats_.table_bytes_stored.fetch_add(table->stored_bytes(), std::memory_order_relaxed);
 }
 
+// Merges every table into one. Because nothing older is left afterwards,
+// deletes can be dropped instead of carried forward.
+void VelocityDB::compact_tables() {
+    std::lock_guard<std::mutex> maintenance(maintenance_mutex_);
+
+    std::vector<std::shared_ptr<SSTable>> inputs;
+    {
+        std::shared_lock<std::shared_mutex> lock(tables_mutex_);
+        inputs = tables_;
+    }
+    if (inputs.size() < 2) return;
+
+    std::map<std::string, SSTable::Entry> merged;
+    for (const auto& table : inputs) {  // oldest first, so newer entries overwrite
+        for (auto& e : table->entries()) {
+            std::string key = e.key;
+            merged[std::move(key)] = std::move(e);
+        }
+    }
+
+    std::vector<SSTable::Entry> live;
+    live.reserve(merged.size());
+    for (auto& [key, e] : merged) {
+        if (!e.deleted) live.push_back(std::move(e));
+    }
+
+    std::shared_ptr<SSTable> output;
+    if (!live.empty()) {
+        output = SSTable::write(table_path(next_table_number_++), live,
+                                {config_.enable_compression, config_.bloom_bits_per_key});
+    }
+    {
+        // Flushes also hold maintenance_mutex_, so the inputs are still exactly
+        // the front of tables_.
+        std::unique_lock<std::shared_mutex> lock(tables_mutex_);
+        tables_.erase(tables_.begin(), tables_.begin() + static_cast<long>(inputs.size()));
+        if (output) tables_.insert(tables_.begin(), output);
+    }
+    for (const auto& table : inputs) fs::remove(table->path());
+
+    stats_.compactions.fetch_add(1, std::memory_order_relaxed);
+}
+
 void VelocityDB::maybe_schedule_maintenance() {
     if (!worker_.joinable()) return;
 
-    bool needed;
-    {
+    bool needed = table_count() >= config_.compaction_trigger;
+    if (!needed) {
         std::shared_lock<std::shared_mutex> lock(memtable_mutex_);
         needed = !immutable_ && memtable_->memory_usage() >= config_.memtable_size_limit;
     }
@@ -298,6 +344,7 @@ void VelocityDB::maintenance_loop() {
                 flush_needed = memtable_->memory_usage() >= config_.memtable_size_limit;
             }
             if (flush_needed) flush_memtable();
+            if (table_count() >= config_.compaction_trigger) compact_tables();
         } catch (const std::exception& e) {
             std::cerr << "velocitydb: background maintenance failed: " << e.what() << "\n";
         }

@@ -23,10 +23,11 @@ struct LookupResult;
 struct Config {
     std::string data_dir = "./velocitydb_data";
     size_t memtable_size_limit = 64 * 1024 * 1024;  // flush once the memtable is this big
+    size_t compaction_trigger = 4;                  // merge tables once there are this many
     size_t bloom_bits_per_key = 10;
     bool enable_compression = true;
     bool enable_wal = true;
-    bool background_maintenance = true;  // flush on a background thread
+    bool background_maintenance = true;  // flush and compact on a background thread
 };
 
 struct Stats {
@@ -37,6 +38,7 @@ struct Stats {
     std::atomic<uint64_t> table_hits{0};
     std::atomic<uint64_t> bloom_skips{0};  // table lookups avoided by a bloom filter
     std::atomic<uint64_t> flushes{0};
+    std::atomic<uint64_t> compactions{0};
     std::atomic<uint64_t> table_bytes_raw{0};     // table data before compression
     std::atomic<uint64_t> table_bytes_stored{0};  // and after
 };
@@ -115,6 +117,8 @@ public:
 
     // Write the memtable to a table file and sync the WAL.
     void flush();
+    // Merge all table files into one, dropping overwritten values and deletes.
+    void compact();
 
     const Stats& stats() const { return stats_; }
     size_t table_count() const;
@@ -129,6 +133,7 @@ private:
     void open_tables();
     void recover_wal();
     void flush_memtable();
+    void compact_tables();
     void maybe_schedule_maintenance();
     void maintenance_loop();
     std::string table_path(uint64_t number) const;
@@ -154,7 +159,7 @@ private:
 
     std::unique_ptr<WAL> wal_;
 
-    // Flushes run one at a time.
+    // Flushes and compactions run one at a time.
     std::mutex maintenance_mutex_;
     std::mutex worker_mutex_;
     std::condition_variable worker_cv_;
