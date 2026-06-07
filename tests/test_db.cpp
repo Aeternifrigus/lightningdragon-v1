@@ -171,3 +171,61 @@ TEST(db_compaction_survives_reopen) {
     VelocityDB db(test_config(dir));
     CHECK_EQ(value_of(db.get("k")), std::string("latest"));
 }
+
+TEST(db_background_flush_and_compaction) {
+    check::TempDir dir;
+    Config c;
+    c.data_dir = dir.str();
+    c.memtable_size_limit = 64 * 1024;
+    c.compaction_trigger = 3;
+    {
+        VelocityDB db(c);
+        for (int i = 0; i < 20000; i++) db.put("key" + std::to_string(i), std::string(100, 'v'));
+        for (int i = 0; i < 20000; i += 997) CHECK(db.get("key" + std::to_string(i)).has_value());
+        CHECK(db.stats().flushes.load() > 0);
+    }
+    VelocityDB db(test_config(dir));
+    for (int i = 0; i < 20000; i += 7) CHECK(db.get("key" + std::to_string(i)).has_value());
+}
+
+TEST(db_concurrent_readers_and_writers) {
+    check::TempDir dir;
+    Config c;
+    c.data_dir = dir.str();
+    c.memtable_size_limit = 256 * 1024;
+    c.compaction_trigger = 3;
+    VelocityDB db(c);
+
+    constexpr int kWriters = 4;
+    constexpr int kPerWriter = 3000;
+    std::atomic<bool> done{false};
+    std::atomic<int> bad_reads{0};
+
+    std::vector<std::thread> threads;
+    for (int w = 0; w < kWriters; w++) {
+        threads.emplace_back([&db, w] {
+            for (int i = 0; i < kPerWriter; i++) {
+                db.put("w" + std::to_string(w) + "_" + std::to_string(i), std::to_string(i));
+            }
+        });
+    }
+    for (int r = 0; r < 2; r++) {
+        threads.emplace_back([&db, &done, &bad_reads] {
+            while (!done.load()) {
+                // values only ever equal the index in their key
+                auto v = db.get("w0_100");
+                if (v && *v != "100") bad_reads++;
+            }
+        });
+    }
+    for (int w = 0; w < kWriters; w++) threads[w].join();
+    done = true;
+    for (size_t t = kWriters; t < threads.size(); t++) threads[t].join();
+
+    CHECK_EQ(bad_reads.load(), 0);
+    for (int w = 0; w < kWriters; w++) {
+        for (int i = 0; i < kPerWriter; i += 101) {
+            CHECK_EQ(value_of(db.get("w" + std::to_string(w) + "_" + std::to_string(i))), std::to_string(i));
+        }
+    }
+}
