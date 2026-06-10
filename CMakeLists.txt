@@ -9,9 +9,17 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
+set(VELOCITYDB_SANITIZE "" CACHE STRING "Sanitizer to build with: address, thread or empty")
 option(VELOCITYDB_BUILD_TESTS "Build the tests" ON)
 
 add_compile_options(-Wall -Wextra -Wpedantic)
+if(VELOCITYDB_SANITIZE STREQUAL "address")
+    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address,undefined)
+elseif(VELOCITYDB_SANITIZE STREQUAL "thread")
+    add_compile_options(-fsanitize=thread)
+    add_link_options(-fsanitize=thread)
+endif()
 
 find_package(Threads REQUIRED)
 
