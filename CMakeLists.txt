@@ -38,6 +38,10 @@ target_include_directories(velocitydb
 )
 target_link_libraries(velocitydb PUBLIC Threads::Threads)
 
+add_executable(velocitydb_demo src/main.cpp)
+target_include_directories(velocitydb_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(velocitydb_demo PRIVATE velocitydb)
+
 if(VELOCITYDB_BUILD_TESTS)
     enable_testing()
     add_executable(velocitydb_tests
@@ -55,5 +59,8 @@ if(VELOCITYDB_BUILD_TESTS)
     add_test(NAME velocitydb_tests COMMAND velocitydb_tests)
 endif()
 
-install(TARGETS velocitydb ARCHIVE DESTINATION lib)
+install(TARGETS velocitydb velocitydb_demo
+    ARCHIVE DESTINATION lib
+    RUNTIME DESTINATION bin
+)
 install(FILES include/velocitydb.hpp DESTINATION include)
