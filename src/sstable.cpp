@@ -95,8 +95,11 @@ std::shared_ptr<SSTable> SSTable::write(const std::string& path, const std::vect
     uint64_t flags = 0;
     if (options.compress && !raw.empty()) {
         const auto compressed = Compressor::compress(raw_bytes, raw.size());
-        data.assign(compressed.begin(), compressed.end());
-        flags |= kFlagCompressed;
+        // keep the raw bytes when compression doesn't help (random values)
+        if (compressed.size() < raw.size()) {
+            data.assign(compressed.begin(), compressed.end());
+            flags |= kFlagCompressed;
+        }
     }
     if (!(flags & kFlagCompressed)) data = raw;
 

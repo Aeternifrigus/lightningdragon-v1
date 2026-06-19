@@ -57,6 +57,32 @@ TEST(sstable_reopen_reads_same_data) {
     CHECK_EQ(table->entries().size(), entries.size());
 }
 
+TEST(sstable_uncompressed_and_incompressible) {
+    check::TempDir dir;
+    std::mt19937 gen(1);
+    std::vector<SSTable::Entry> entries;
+    for (int i = 0; i < 200; i++) {
+        std::string value(64, ' ');
+        for (auto& c : value) c = static_cast<char>(gen());
+        entries.push_back({"k" + std::to_string(1000 + i), value, static_cast<uint64_t>(i + 1), false});
+    }
+    for (bool compress : {true, false}) {
+        const std::string path = (dir.path() / (compress ? "c.sst" : "u.sst")).string();
+        auto written = SSTable::write(path, entries, {compress, 10});
+        CHECK(written->stored_bytes() <= written->raw_bytes());
+        auto table = SSTable::open(path);
+        CHECK_EQ(table->get("k1100").value, entries[100].value);
+    }
+
+    // one large random value: compressing it would make it bigger
+    std::string blob(65536, ' ');
+    for (auto& c : blob) c = static_cast<char>(gen());
+    const std::string path = (dir.path() / "blob.sst").string();
+    auto written = SSTable::write(path, {{"blob", blob, 1, false}}, {true, 10});
+    CHECK(written->stored_bytes() <= written->raw_bytes());
+    CHECK_EQ(SSTable::open(path)->get("blob").value, blob);
+}
+
 TEST(sstable_snapshot_filter) {
     check::TempDir dir;
     auto table = SSTable::write((dir.path() / "1.sst").string(), {{"a", "1", 10, false}}, {});
