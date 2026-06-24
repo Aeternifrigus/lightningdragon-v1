@@ -34,8 +34,8 @@ enum FooterField {
     kFieldBloomHashes,
     kFieldMinSequence,
     kFieldMaxSequence,
+    kFieldDataCrc,
     kFieldReserved,
-    kFieldReserved2,
 };
 
 [[noreturn]] void corrupt(const std::string& path, const std::string& what) {
@@ -118,6 +118,7 @@ std::shared_ptr<SSTable> SSTable::write(const std::string& path, const std::vect
     footer[kFieldBloomHashes] = bloom.num_hashes();
     footer[kFieldMinSequence] = entries.empty() ? 0 : min_seq;
     footer[kFieldMaxSequence] = max_seq;
+    footer[kFieldDataCrc] = crc32(data);
     for (uint64_t field : footer) put_u64(file, field);
 
     write_file(path, file);
@@ -148,6 +149,7 @@ std::shared_ptr<SSTable> SSTable::open(const std::string& path) {
     if (data_size + index_size + bloom_size + kFooterSize != buf.size()) {
         corrupt(path, "section sizes don't add up");
     }
+    if (crc32(bytes, data_size) != footer[kFieldDataCrc]) corrupt(path, "data checksum mismatch");
 
     const uint8_t* bloom_start = bytes + data_size + index_size;
     BloomFilter bloom(std::vector<uint8_t>(bloom_start, bloom_start + bloom_size),

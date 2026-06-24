@@ -100,3 +100,22 @@ TEST(sstable_rejects_unsorted_input) {
     }
     CHECK(threw);
 }
+
+TEST(sstable_detects_corruption) {
+    check::TempDir dir;
+    const std::string path = (dir.path() / "1.sst").string();
+    SSTable::write(path, sample_entries(100), {});
+    {
+        std::fstream f(path, std::ios::in | std::ios::out | std::ios::binary);
+        f.seekp(10);
+        f.put('\x7f');
+    }
+    bool threw = false;
+    try {
+        SSTable::open(path);
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    CHECK(threw);
+    CHECK(!std::filesystem::exists(path + ".tmp"));
+}
