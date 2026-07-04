@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: release
+            target: test
+          - name: asan
+            target: asan
+          - name: tsan
+            target: tsan
+    name: ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v4
+      # TSan fails to start on newer kernels with high ASLR entropy
+      - run: sudo sysctl vm.mmap_rnd_bits=28
+      - run: make ${{ matrix.target }}
