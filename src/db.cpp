@@ -64,7 +64,9 @@ void VelocityDB::open_tables() {
     std::vector<std::pair<uint64_t, std::string>> found;
     for (const auto& entry : fs::directory_iterator(config_.data_dir)) {
         const auto& p = entry.path();
-        if (p.extension() == ".sst") {
+        if (p.extension() == ".tmp") {
+            fs::remove(p);  // left over from a write that never finished
+        } else if (p.extension() == ".sst") {
             found.emplace_back(std::stoull(p.stem().string()), p.string());
         }
     }
